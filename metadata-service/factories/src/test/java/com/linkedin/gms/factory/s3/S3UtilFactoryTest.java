@@ -3,6 +3,7 @@ package com.linkedin.gms.factory.s3;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
 
 import com.linkedin.metadata.utils.aws.S3Util;
 import java.time.Instant;
@@ -14,6 +15,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.testng.AbstractTestNGSpringContextTests;
+import org.testng.SkipException;
 import org.testng.annotations.Test;
 import software.amazon.awssdk.services.sts.StsClient;
 import software.amazon.awssdk.services.sts.model.AssumeRoleRequest;
@@ -90,5 +92,37 @@ class S3UtilFactoryWithRoleArnTest extends AbstractTestNGSpringContextTests {
   public void testS3UtilCreationWithRoleArn() {
     // When/Then
     assertNotNull(s3Util, "S3Util bean should be created successfully with STS role ARN");
+  }
+}
+
+/**
+ * Verifies S3Util is not created when no AWS config is present (quickstart/local dev scenario: no
+ * datahub.s3.roleArn, no AWS_ENDPOINT_URL, no AWS_REGION, no aws.region).
+ *
+ * <p>Skips when AWS_REGION or AWS_ENDPOINT_URL is set in the environment, since the factory will
+ * then create an S3 client and the assertion would not apply.
+ */
+@SpringBootTest(classes = {S3UtilFactory.class})
+@TestPropertySource(properties = {"datahub.s3.roleArn="})
+class S3UtilFactoryNoAwsConfigTest extends AbstractTestNGSpringContextTests {
+
+  static {
+    System.clearProperty("aws.region");
+  }
+
+  @Autowired(required = false)
+  @Qualifier("s3Util")
+  private S3Util s3Util;
+
+  @Test
+  public void testS3UtilIsNullWhenNoAwsConfig() {
+    String awsRegion = System.getenv("AWS_REGION");
+    String awsEndpoint = System.getenv("AWS_ENDPOINT_URL");
+    if ((awsRegion != null && !awsRegion.isEmpty())
+        || (awsEndpoint != null && !awsEndpoint.isEmpty())) {
+      throw new SkipException(
+          "Skipping: AWS_REGION or AWS_ENDPOINT_URL is set, so S3Util is created");
+    }
+    assertNull(s3Util, "S3Util bean should be null when no AWS region or endpoint is configured");
   }
 }
